@@ -52,7 +52,6 @@ const PreferenceForm: React.FC<Props> = ({ monthKey, monthDays, saturdays, prefe
   };
 
   const handleManualSave = () => {
-    // 擬似的な遅延を削除し、即座に保存完了状態にする
     setSaveStatus('saved');
     setLastSaved(format(new Date(), 'HH:mm:ss'));
     setTimeout(() => setSaveStatus('idle'), 2000);
@@ -137,13 +136,30 @@ const PreferenceForm: React.FC<Props> = ({ monthKey, monthDays, saturdays, prefe
   };
 
   const handleClearIndividualRequests = () => {
-    if (!window.confirm('全メンバーの個別休み希望（カレンダーのマーク）をすべて解除しますか？\n※土曜日の出勤可能設定は維持されます。')) return;
+    if (!window.confirm('全メンバーの個別休み希望（有休含む）をすべて解除しますか？\n（確定済みの休みも出勤にリセットされますが、土曜日出勤可能調査の回答は保持されます）')) return;
     
-    // saturdaysは維持し、shiftOffRequestsのみ空にする
+    // 1. 希望データのクリア (shiftOffRequestsのみを空にする)
+    // 左側の土曜日出勤可能調査（saturdays）は保持する
     onUpdate({
       saturdays: safeSaturdays,
       shiftOffRequests: []
     });
+
+    // 2. シフト表データの更新（OFFやPAIDを出勤に戻す）
+    if (currentShift) {
+      const shift = getInitializedShift();
+      const newEntries = shift.entries.map(e => {
+        const day = monthDays.find(d => d.isoDate === e.date);
+        const isHoliday = day && (day.dayType === 'SUNDAY' || day.dayType === 'HOLIDAY' || day.dayType === 'COMPANY_HOLIDAY');
+        
+        // 祝日ではなく、かつ荷受当番でもない場合、OFFやPAIDをWORKに戻す
+        if (!isHoliday && e.status !== 'SAT_WORK') {
+          return { ...e, status: 'WORK' } as ShiftEntry;
+        }
+        return e;
+      });
+      onUpdateShift({ ...shift, entries: newEntries });
+    }
     
     handleManualSave();
   };
@@ -384,7 +400,7 @@ const PreferenceForm: React.FC<Props> = ({ monthKey, monthDays, saturdays, prefe
                 <button 
                   onClick={handleClearIndividualRequests}
                   className="text-[10px] font-bold text-rose-600 hover:bg-rose-50 border border-rose-200 px-3 py-1.5 rounded-lg flex items-center justify-center transition-colors shadow-sm"
-                  title="個別休み希望（カレンダーのマーク）を一括解除します"
+                  title="個別休み希望（ドット）を一括解除します。土曜日調査の回答は保持されます。"
                 >
                   <Trash2 className="w-3 h-3 mr-1" />
                   一括解除
